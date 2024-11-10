@@ -6,5 +6,4 @@ wordcloud
 pandas
 emoji
 nltk
-sklearn
-datetime
+scikit-learn
