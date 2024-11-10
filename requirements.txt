@@ -6,3 +6,5 @@ wordcloud
 pandas
 emoji
 nltk
+sklearn
+datetime
