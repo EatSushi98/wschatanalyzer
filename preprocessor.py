@@ -145,7 +145,8 @@ def train_datas(dataf, selected_user):
     print(dataf.head())
     
     # Define features and target variable
-    X = dataf[['minute', 'hour', 'day', 'day_of_week', 'is_weekend', 'message_length','daily_message_intensity', 'day_weekend_interaction', 'total_messages', 'total_daily_messages']]
+    feature = ['minute', 'hour', 'day', 'day_of_week', 'is_weekend', 'message_length','daily_message_intensity', 'day_weekend_interaction', 'total_messages', 'total_daily_messages']
+    X = dataf[feature]
     y = dataf['message_count'] #if selected_user != "Overall" else dataf['total_daily_messages'] 
     
     # print("DATAFRAME AFTER FEATURES SELECTION:", dataf.columns)
