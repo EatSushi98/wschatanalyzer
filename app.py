@@ -258,11 +258,6 @@ if uploaded_file is not None:
         ax.axis('equal')
         st.pyplot(fig)
 
-               
-
-        
-  
-        
         
         # # Extract DateTime Features
         # df = helper.extract_datetime_features(df)
