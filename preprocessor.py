@@ -18,6 +18,8 @@ nltk.download('stopwords')
 
 
 def preprocess(data):
+    # Remove '<media omitted>' lines
+    data = re.sub(r'.*<media omitted>.*\n?', '', data)
     # Updated pattern to handle both 12-hour and 24-hour time formats
     pattern = r'\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}\u202f?[APMapm]{2}\s-\s'
     
@@ -59,16 +61,26 @@ def preprocess(data):
             messages.append(entry[0])  # It's a notification if no user is found
 
     # Add users and messages to DataFrame
+   
     dataf['user'] = users
     dataf['message'] = messages
 
+    def getstring(text):
+            return text.split('\n')[0]
+
+    dataf['message'] = dataf['message'].apply(lambda text:getstring(text))
+
+
+    # dataf = dataf.drop(['user_messages'],axis=1)
+    dataf = dataf[['message','date','user']]
+                        
+    
     # Drop the original user_message column
-    dataf.drop(columns=['user_message'], inplace=True)
+    # dataf.drop(columns=['user_message'], inplace=True)
     dataf = dataf[dataf['user'] != 'group_notification']
     
     # Add sentiment analysis to the DataFrame when you preprocess the data
     dataf['sentiment'] = dataf['message'].apply(get_sentiment_vader)
-
     # Extract additional date and time-related columns
     dataf['only_date'] = dataf['date'].dt.date
     dataf['year'] = dataf['date'].dt.year
@@ -95,7 +107,7 @@ def preprocess(data):
 
 #FREQUENCY PREDICTER  ------   How many messages they will send in a given time frame (e.g., per hour or day).
 def prepare_data(dataf):    
-    print("DataFrame shape before merging:", dataf.shape)
+    # print("DataFrame shape before merging:", dataf.shape)
     # Group by user and hour to get the number of messages sent
     user_day_count = dataf.groupby(['user', 'day']).size().reset_index(name='message_count')
     # Group by total number of messages
@@ -105,14 +117,17 @@ def prepare_data(dataf):
     
     # Merge with the original DataFrame to retain additional features
     dataf = dataf.merge(user_day_count, on=['user', 'day'], how='left')
-    print("After merging user_day_count, columns:", dataf.columns)
     dataf = dataf.merge(total_messages, on='user', how='left')
-    print("After merging total_mesxsages, columns:", dataf.columns)
     dataf = dataf.merge(daily_messages, on=['user', 'only_date'], how='left')
-    print("After merging daily_messages, columns:", dataf.columns)
+    
 
-    print("DataFrame shape after merging:", dataf.shape)
-    print("Columns after preparation:", dataf.columns)
+    print("After merging user_day_count, columns:", dataf.columns)
+    print("After merging total_mesxsages, columns:", dataf.columns)
+    print("After merging daily_messages, columns:", dataf.columns)
+    
+    
+    # print("DataFrame shape after merging:", dataf.shape)
+    # print("Columns after preparation:", dataf.columns)
     
     return dataf
 
@@ -141,12 +156,11 @@ def train_datas(dataf, selected_user):
             print("No data available for the selected user.")
             return None
     
-    print(f"Data columns after filtering by user: {dataf.columns}")
-    print(dataf.head())
+    # print(f"Data columns after filtering by user: {dataf.columns}")
+    # print(dataf.head())
     
     # Define features and target variable
-    feature = ['minute', 'hour', 'day', 'day_of_week', 'is_weekend', 'message_length','daily_message_intensity', 'day_weekend_interaction', 'total_messages', 'total_daily_messages']
-    X = dataf[feature]
+    X = dataf[['minute', 'hour', 'day', 'day_of_week', 'is_weekend', 'message_length','daily_message_intensity', 'day_weekend_interaction', 'total_messages', 'total_daily_messages']]
     y = dataf['message_count'] #if selected_user != "Overall" else dataf['total_daily_messages'] 
     
     # print("DATAFRAME AFTER FEATURES SELECTION:", dataf.columns)
@@ -170,7 +184,7 @@ def train_datas(dataf, selected_user):
     st.write(f"R-squared: {r2}")
     st.write(f"Mean Squared Error: {mse}")
     
-    predictions_df = pd.DataFrame({'Actual': y_test, 'Predicted': f"{y_pred}"})
+    predictions_df = pd.DataFrame({'User': dataf['user'], 'Actual': y_test, 'Predicted': f"{y_pred}"})
     print(predictions_df.head())
         
     joblib.dump(model, 'linear_regression_model.pkl')    
