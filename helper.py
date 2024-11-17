@@ -195,4 +195,3 @@ def sentiment_over_time(selected_user, df):
     ax.set_xlabel('Date')
     ax.set_ylabel('Message Count')
     return fig
-
