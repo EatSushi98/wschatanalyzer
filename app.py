@@ -9,16 +9,12 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 import os 
 import time
-# from matplotlib import font_manager
-
-# font_path = '"C:\Users\karsu\Downloads\Noto_Emoji\NotoEmoji-VariableFont_wght.ttf"'
-# font_prop = font_manager.FontProperties(fname=font_path)
-# plt.rcParams['font.family'] = font_prop.get_name()
+import atexit
 
 #REAL TIME
 
-
-
+file_path = r"C:\Users\karsu\OneDrive\Desktop\Programming\venv\CollegeProject\WhatsApp Chat with Doubt Grp 11th PLT B5 G4.txt"
+global df
 class ChatFileHandler(FileSystemEventHandler):
     def __init__(self, file_path, callback):
         self.file_path = file_path
@@ -26,6 +22,7 @@ class ChatFileHandler(FileSystemEventHandler):
             
     def on_modified(self, event):
         if(event.src_path == self.file_path):
+            print(f"File modified: {event.src_path}")  # Debugging line
             self.callback()             # Call the function to update the data
 
 def start_file_watcher(file_path, callback):
@@ -45,6 +42,17 @@ def update_chat_data():
     except Exception as e:
         st.error(f"Error reading the chat file: {e}")
 
+def load_chat_data():
+    global df   
+    try:
+        with open(file_path, 'r', encoding='utf-8') as file:
+            data = file.read()
+        df = preprocessor.preprocess(data)
+    except Exception as e:
+        st.error(f"Error reading the chat file: {e}")
+
+st.title("WhatsApp Chat Analyzer")
+
 # Sidebar for file upload
 uploaded_file = st.sidebar.file_uploader("Choose a file")
 if uploaded_file is not None:
@@ -58,13 +66,12 @@ if uploaded_file is not None:
         data = file.read()
     df = preprocessor.preprocess(data)
     
-    observer = start_file_watcher(file_path, update_chat_data)
-                                        
-
     # Fetch unique users
     user_list = df['user'].unique().tolist()
     user_list.sort()
     user_list.insert(0, "Overall")
+    
+    # print("User_list: ", user_list)
     
     selected_user = st.sidebar.selectbox("Show analysis wrt", user_list)
 
@@ -104,7 +111,7 @@ if uploaded_file is not None:
         st.pyplot(fig)
         
         # Sentiment Analysis
-        st.title("Sentiment Analysis")
+        st.title("Sentiment Analysis")                                                      ####### Check this out.
         st.pyplot(helper.sentiment_pie_chart(selected_user, df))
         st.pyplot(helper.sentiment_over_time(selected_user, df))
 
@@ -188,7 +195,6 @@ if uploaded_file is not None:
         
         #Later, to make predictions on new data:
         
-        
         # new_features['hoursq'] = new_features['hour'] * new_features['hour']
         # print(f"Data after preparation: {new_features.shape}")
         X_new = new_features[['minute', 'hour', 'day', 'day_of_week', 'is_weekend', 'message_length', 'daily_message_intensity', 'day_weekend_interaction', 'total_messages', 'total_daily_messages']]
@@ -201,7 +207,8 @@ if uploaded_file is not None:
 
         print("Rows after passing to model")
         print(df.head())
-        
+        # st.write("The DataFrame is : ")
+        # st.dataframe(df)
         predictions_df = pd.DataFrame({
         'Minute': X_new['minute'],
         'Hour': X_new['hour'],
@@ -216,12 +223,27 @@ if uploaded_file is not None:
         'Predictions': predictions
         # 'Sentiment': X_new['sentiment']
         })
-
+        predictions_df['user'] = df['user']
+        
         #DISPLAY PREDICTIONS IN STREAMLIT
         st.title("Message Count Predictions")
         st.write("Predictions DataFrame:")
         st.dataframe(predictions_df)
         
+        
+        load_chat_data()
+        if __name__ == '__main__':
+            # Start the file watcher
+            observer = start_file_watcher(file_path, update_chat_data)
+            # Ensuring oberserver is stopped whenever the app exits.
+            import atexit
+            atexit.register(observer.stop)
+            
+            if 'df' in globals() and df is not None:
+                st.write("Main DataFrame: ")
+                st.dataframe(df)  # Display the DataFrame if it's loaded
+            else:
+                st.warning("No data to display yet. Modify the file to load updates.")
         
         
         # FILTERED MESSAGES
@@ -236,6 +258,12 @@ if uploaded_file is not None:
         ax.axis('equal')
         st.pyplot(fig)
 
+               
+
+        
+  
+        
+        
         # # Extract DateTime Features
         # df = helper.extract_datetime_features(df)
         # st.dataframe(df.head(50))
@@ -244,7 +272,7 @@ if uploaded_file is not None:
         # year_filter = st.sidebar.selectbox('Select Year', df['year'].dropna().unique())
         # month_filter = st.sidebar.selectbox('Select Month', df['month'].dropna().unique())
         # date_filter = st.sidebar.selectbox('Select Date', df['date'].dropna().unique())
-
+ 
         # filtereddate_df = df[(df['year'] == year_filter) & (df['month'] == month_filter) & (df['date'] == date_filter)]
         # st.dataframe(filtereddate_df)  # Uncomment after testing
 
