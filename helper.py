@@ -1,218 +1,193 @@
-import re
-import streamlit as st
+from urlextract import URLExtract
+from wordcloud import WordCloud
 import pandas as pd
-from datetime import datetime
-import nltk
-import matplotlib.pyplot as plt, seaborn as sns
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
-import joblib
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-import numpy as np
+from collections import Counter
+import emoji
+import datetime
+import matplotlib.pyplot as plt
+import seaborn as sns
+from preprocessor import train_datas
 
-nltk.download('vader_lexicon')
-nltk.download('stopwords')
+extract = URLExtract()
+
+def fetch_stats(selected_user,df):
+
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+
+    # fetch the number of messages
+    num_messages = df.shape[0]
+
+    # fetch the total number of words
+    words = []
+    for message in df['message']:
+        words.extend(message.split())
+
+    # fetch number of media messages 
+    num_media_messages = df[df['message'] == '<Media omitted>\n'].shape[0]
+
+    # fetch number of links shared
+    links = []
+    for message in df['message']:
+        links.extend(extract.find_urls(message))
+
+    return num_messages,len(words),num_media_messages,len(links)
+
+def most_busy_users(df):
+     # Count the number of messages by each user and take the top ones
+    x = df['user'].value_counts().head()
+    # Calculate the percentage of messages each user sent
+    df = round((df['user'].value_counts() / df.shape[0]) * 100, 2).reset_index().rename(
+        columns={'index': 'name', 'user': 'percent'})
+    # Return the top message senders and their percentage
+    return x,df
+
+def create_wordcloud(selected_user,df):
+
+    f = open('stop_hinglish.txt', 'r')
+    stop_words = f.read()
+
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+
+    temp = df[df['user'] != 'group_notification']
+    temp = temp[temp['message'] != '<Media omitted>\n']
+
+    def remove_stop_words(message):
+        y = []
+        for word in message.lower().split():
+            if word not in stop_words:
+                y.append(word)
+        return " ".join(y)
+
+    wc = WordCloud(width=500,height=500,min_font_size=10,background_color='white')
+    temp['message'] = temp['message'].apply(remove_stop_words)
+    df_wc = wc.generate(temp['message'].str.cat(sep=" "))
+    return df_wc
+
+def most_common_words(selected_user,df):
+
+    f = open("stop_hinglish.txt",'r')
+    stop_words = f.read()
+
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+
+    temp = df[df['user'] != 'group_notification']
+    temp = temp[temp['message'] != '<Media omitted>\n']
+
+    words = []
+
+    for message in temp['message']:
+        for word in message.lower().split():
+            if word not in stop_words:
+                words.append(word)
+
+    most_common_df = pd.DataFrame(Counter(words).most_common(20))
+    return most_common_df
+
+def emoji_helper(selected_user, df):
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+
+    emojis = []
+    for message in df['message']:
+        emojis.extend([c for c in message if c in emoji.EMOJI_DATA])  # Updated to use emoji.EMOJI_DATA
+
+    # Convert emoji list to DataFrame and count occurrences
+    emoji_df = pd.DataFrame(Counter(emojis).most_common(), columns=['Emoji', 'Count'])
+
+    return emoji_df
 
 
-def preprocess(data):
-    # Remove '<media omitted>' lines
-    data = re.sub(r'.*<media omitted>.*\n?', '', data)  
-    # Updated pattern to handle both 12-hour and 24-hour time formats
-    pattern = r'\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}\u202f?[APMapm]{2}\s-\s'
-    
-    # Split messages and extract dates
-    messages = re.split(pattern, data)[1:]  # Skip the first split which might be empty
-    dates = re.findall(pattern, data)
+def monthly_timeline(selected_user,df):
 
-    # Create DataFrame
-    dataf = pd.DataFrame({'user_message': messages, 'message_date': dates})
-    # #Behaviour Model 
-    
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
 
-    # Handle both 12-hour (AM/PM) and 24-hour formats
+    timeline = df.groupby(['year', 'month_num', 'month']).count()['message'].reset_index()
+
+    time = []
+    for i in range(timeline.shape[0]):
+        time.append(timeline['month'][i] + "-" + str(timeline['year'][i]))
+
+    timeline['time'] = time
+
+    return timeline
+
+def daily_timeline(selected_user,df):
+
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+
+    daily_timeline = df.groupby('only_date').count()['message'].reset_index()
+
+    return daily_timeline
+
+def week_activity_map(selected_user,df):
+
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+
+    return df['day_name'].value_counts()
+
+def month_activity_map(selected_user,df):
+
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+
+    return df['month'].value_counts()
+
+def activity_heatmap(selected_user,df):
+
+    if selected_user != 'Overall':
+        df = df[df['user'] == selected_user]
+
+    user_heatmap = df.pivot_table(index='day_name', columns='period', values='message', aggfunc='count').fillna(0)
+
+    return user_heatmap
+
+def filter_messages_by_user(df, user):
+    if user == 'Overall':
+        return df
+    else:
+        return df[df['user'] == user]
+
+def extract_datetime_features(df):
+    # Ensure 'date' column is in string format and handle NaNs
+    df['date'] = df['date'].astype(str).str.replace('\u202f', ' ', regex=True)
+
+    # Parse the date with error handling
     try:
-        # First attempt to parse as 12-hour format (with AM/PM)
-        dataf['message_date'] = pd.to_datetime(dataf['message_date'], format='%d/%m/%Y, %I:%M %p - ')
-    except ValueError:
-        # If it fails, fall back to parsing as 24-hour format
-        try:
-            dataf['message_date'] = pd.to_datetime(dataf['message_date'], format='%d/%m/%Y, %H:%M - ')
-        except ValueError:
-            # Fallback for non-breaking space parsing
-            dataf['message_date'] = pd.to_datetime(dataf['message_date'], format='%d/%m/%Y, %H:%M\u202f - ')
+        df['only date'] = pd.to_datetime(df['date'], format='%d/%m/%Y %I:%M %p', dayfirst=True).dt.date
+        df['year'] = pd.to_datetime(df['date'], format='%d/%m/%Y %I:%M %p', dayfirst=True).dt.year
+        df['month_num'] = pd.to_datetime(df['date'], format='%d/%m/%Y %I:%M %p', dayfirst=True).dt.month
+        df['month'] = pd.to_datetime(df['date'], format='%d/%m/%Y %I:%M %p', dayfirst=True).dt.month_name()
+        df['day'] = pd.to_datetime(df['date'], format='%d/%m/%Y %I:%M %p', dayfirst=True).dt.day
+        df['day_name'] = pd.to_datetime(df['date'], format='%d/%m/%Y %I:%M %p', dayfirst=True).dt.day_name()
+        df['hour'] = pd.to_datetime(df['date'], format='%d/%m/%Y %I:%M %p', dayfirst=True).dt.hour
+        df['minute'] = pd.to_datetime(df['date'], format='%d/%m/%Y %I:%M %p', dayfirst=True).dt.minute
+    except Exception as e:
+        print("Error parsing dates:", e)
 
-    # Rename column for clarity
-    dataf.rename(columns={'message_date': 'date'}, inplace=True)
+    return df
 
-    users = []
-    messages = []
-    
-    for message in dataf['user_message']: 
-        # Handle user split logic (improved for consistency)
-        entry = re.split(r'([\w\W]+?):\s', message)
-        if len(entry) > 1:  # If the split finds a user
-            users.append(entry[1])
-            messages.append(entry[2])  # Collect the message after user
-        else:
-            users.append('group_notification')
-            messages.append(entry[0])  # It's a notification if no user is found
+#SENTIMENT ANALYSIS PART
 
-    # Add users and messages to DataFrame
-   
-    dataf['user'] = users
-    dataf['message'] = messages
+# Function to create a pie chart for sentiment distribution
+def sentiment_pie_chart(selected_user, df):
+    sentiment_counts = df['sentiment'].value_counts()
+    fig, ax = plt.subplots()
+    ax.pie(sentiment_counts, labels=sentiment_counts.index, autopct='%1.1f%%', colors=['#66b3ff','#99ff99','#ff9999'])
+    ax.set_title('Sentiment Analysis of Messages')
+    return fig
 
-    def getstring(text):
-            return text.split('\n')[0]
-
-    dataf['message'] = dataf['message'].apply(lambda text:getstring(text))
-
-
-    # dataf = dataf.drop(['user_messages'],axis=1)
-    dataf = dataf[['message','date','user']]
-                        
-    
-    # Drop the original user_message column
-    # dataf.drop(columns=['user_message'], inplace=True)
-    dataf = dataf[dataf['user'] != 'group_notification']
-    
-    # Add sentiment analysis to the DataFrame when you preprocess the data
-    dataf['sentiment'] = dataf['message'].apply(get_sentiment_vader)
-    # Extract additional date and time-related columns
-    dataf['only_date'] = dataf['date'].dt.date
-    dataf['year'] = dataf['date'].dt.year
-    dataf['month_num'] = dataf['date'].dt.month
-    dataf['month'] = dataf['date'].dt.month_name()
-    dataf['day'] = dataf['date'].dt.day
-    dataf['day_name'] = dataf['date'].dt.day_name()
-    dataf['hour'] = dataf['date'].dt.hour
-    dataf['minute'] = dataf['date'].dt.minute
-    dataf['day_of_week'] = dataf['date'].dt.day_of_week
-    dataf['is_weekend'] = dataf['day_of_week'].apply(lambda x: x >= 5)
-    dataf['message_length'] = dataf['message'].apply(len)
-    # Create 'daily_message_intensity' by multiplying 'hour' with 'message_length'
-    dataf.loc[:, 'daily_message_intensity'] = dataf['day'] * dataf['message_length']
-    # Create 'day_weekend_interaction' by multiplying 'day_of_week' with 'is_weekend'
-    dataf.loc[:, 'day_weekend_interaction'] = dataf['day_of_week'] * dataf['is_weekend']
-
-    # Calculate the period for each message
-    dataf['period'] = dataf['hour'].apply(lambda x: f'{x:02d}-{(x+1)%24:02d}')              ##what is this
-    
-    # dataf['sentiment_score'] = dataf['sentiment'].apply(lambda x: x['compound'])
-    
-    return dataf
-
-
-#FREQUENCY PREDICTER  ------   How many messages they will send in a given time frame (e.g., per hour or day).
-def prepare_data(dataf):    
-    # Group by user and hour to get the number of messages sent
-    user_day_count = dataf.groupby(['user', 'day']).size().reset_index(name='message_count')
-    # Group by total number of messages
-    total_messages = dataf.groupby('user').size().reset_index(name='total_messages')
-    # Group by date and count messages for all users
-    daily_messages = dataf.groupby(['user', 'only_date']).size().reset_index(name='total_daily_messages')
-    
-    # Merge with the original DataFrame to retain additional features
-    dataf = dataf.merge(user_day_count, on=['user', 'day'], how='left')
-    dataf = dataf.merge(total_messages, on='user', how='left')
-    dataf = dataf.merge(daily_messages, on=['user', 'only_date'], how='left')
-
-    return dataf
-
-
-def train_datas(dataf, selected_user):
-    dataf = prepare_data(dataf)
-    
-    if selected_user == "Overall":
-        # # Use overall data; ensure total_messages is included
-        # print("Using overall data for training.")
-        # # dataf = Overall_df
-        # if selected_user == "Overall":
-        #     print(dataf.head())
-
-        if 'total_messages' not in dataf.columns:
-            print("Error: 'total_messages' column is missing from DataFrame.")
-            return None
-        
-
-    else:
-        dataf = dataf[dataf['user'] == selected_user]
-        print(f"Filtered data for {selected_user}: {dataf.shape}")
-
-        if dataf.empty:
-            print("No data available for the selected user.")
-            return None
-    
-    # Define features and target variable
-    X = dataf[['minute', 'hour', 'day', 'day_of_week', 'is_weekend', 'message_length','daily_message_intensity', 'day_weekend_interaction', 'total_messages', 'total_daily_messages']]
-    y = dataf['message_count'] #if selected_user != "Overall" else dataf['total_daily_messages'] 
-    
-    # print("DATAFRAME AFTER FEATURES SELECTION:", dataf.columns)
-    
-    if X.empty or y.empty:
-        print("X or y is empty, cannot train the model.")
-        return None
-    
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    
-    model = LinearRegression()
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-
-    # print(X_test)                                                     ###### Very Important for understanding the working of the model.
-    # print("model coeff: ", model.coef_)                               ###### y = (model.coef_ * (X_test)) + model.intercept_        
-    # print("model intercept: ", model.intercept_)                      ###### model.intercept_ = 1.0302869668521453e-12  and model.coef_ = [ 9.39664541e-17  3.83026943e-15  1.81929125e-15 -3.25694333e-15 5.64760912e-16 -2.49800181e-16 -3.08086889e-15  3.57266300e-15 1.70002901e-16  1.00000000e+00]   
-    # print((model.coef_*X_test)+model.intercept_)
-    r2 = r2_score(y_test, y_pred)
-    mse = mean_squared_error(y_test, y_pred)
-    mae = mean_absolute_error(y_test, y_pred)
-    rmse = np.sqrt(mse)
-
-    
-    
-    print("R-squared:", f"{r2}")
-    print("Mean Squared Error:", f"{mse}")
-    print("Mean Absolute Error:", f"{mae}")
-    print("Root Mean Squared Error:", f"{rmse}")
-    
-    st.write(f"R-squared: {r2}")
-    st.write(f"Mean Squared Error: {mse}")
-    st.write(f"Mean Absolute Error: {mae}")
-    st.write(f"Root Mean Squared Error: {rmse}")
-    
-    predictions_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred})
-    print(predictions_df.head())
-
-    st.title('Prediction Visualization')
-    # Scatter plot function``
-
-    st.write("Scatter Plot")
-    plt.figure(figsize=(8, 6))
-    sns.scatterplot(x=y_test, y=y_pred, alpha=0.7)
-    plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], color='red', linestyle='--')
-    plt.xlabel("Actual Values")
-    plt.ylabel("Predicted Values")
-    plt.title("Actual vs Predicted")
-    st.pyplot(plt)
-    
-    
-    joblib.dump(model, 'linear_regression_model.pkl')
-       
-
-def load_model():
-    return joblib.load('linear_regression_model.pkl')
-
-
-# Initialize VADER sentiment intensity analyzer
-sid = SentimentIntensityAnalyzer()
-
-#2. Add Sentiment Analysis to the preprocess Function
-def get_sentiment_vader(message):
-    sentiment = sid.polarity_scores(message)
-    if sentiment['compound'] >= 0.05:
-        return 'Positive'
-    elif sentiment['compound'] <= -0.05:
-        return 'Negative'
-    else:
-        return 'Neutral'
+# Sentiment over time
+def sentiment_over_time(selected_user, df):
+    sentiment_time = df.groupby(['only_date', 'sentiment']).size().unstack(fill_value=0)
+    fig, ax = plt.subplots()
+    sentiment_time.plot(kind='line', ax=ax)
+    ax.set_title('Sentiment Over Time')
+    ax.set_xlabel('Date')
+    ax.set_ylabel('Message Count')
+    return fig
