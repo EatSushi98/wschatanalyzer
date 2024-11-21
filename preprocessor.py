@@ -3,14 +3,12 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import nltk
+import matplotlib.pyplot as plt, seaborn as sns
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 import joblib
 from sklearn.model_selection import train_test_split
-# from sklearn.ensemble import RandomForestClassifier
-# from sklearn.metrics import classification_report
 from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score
-from sklearn.metrics import mean_squared_error
+from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 import numpy as np
 
 nltk.download('vader_lexicon')
@@ -19,7 +17,7 @@ nltk.download('stopwords')
 
 def preprocess(data):
     # Remove '<media omitted>' lines
-    data = re.sub(r'.*<media omitted>.*\n?', '', data)
+    data = re.sub(r'.*<media omitted>.*\n?', '', data)  
     # Updated pattern to handle both 12-hour and 24-hour time formats
     pattern = r'\d{1,2}/\d{1,2}/\d{2,4},\s\d{1,2}:\d{2}\u202f?[APMapm]{2}\s-\s'
     
@@ -99,7 +97,8 @@ def preprocess(data):
     dataf.loc[:, 'day_weekend_interaction'] = dataf['day_of_week'] * dataf['is_weekend']
 
     # Calculate the period for each message
-    dataf['period'] = dataf['hour'].apply(lambda x: f'{x:02d}-{(x+1)%24:02d}')
+    dataf['period'] = dataf['hour'].apply(lambda x: f'{x:02d}-{(x+1)%24:02d}')              ##what is this
+    
     # dataf['sentiment_score'] = dataf['sentiment'].apply(lambda x: x['compound'])
     
     return dataf
@@ -107,7 +106,6 @@ def preprocess(data):
 
 #FREQUENCY PREDICTER  ------   How many messages they will send in a given time frame (e.g., per hour or day).
 def prepare_data(dataf):    
-    # print("DataFrame shape before merging:", dataf.shape)
     # Group by user and hour to get the number of messages sent
     user_day_count = dataf.groupby(['user', 'day']).size().reset_index(name='message_count')
     # Group by total number of messages
@@ -119,29 +117,19 @@ def prepare_data(dataf):
     dataf = dataf.merge(user_day_count, on=['user', 'day'], how='left')
     dataf = dataf.merge(total_messages, on='user', how='left')
     dataf = dataf.merge(daily_messages, on=['user', 'only_date'], how='left')
-    
 
-    print("After merging user_day_count, columns:", dataf.columns)
-    print("After merging total_mesxsages, columns:", dataf.columns)
-    print("After merging daily_messages, columns:", dataf.columns)
-    
-    
-    # print("DataFrame shape after merging:", dataf.shape)
-    # print("Columns after preparation:", dataf.columns)
-    
     return dataf
+
 
 def train_datas(dataf, selected_user):
     dataf = prepare_data(dataf)
-    print("DataFrame columns before feature selection:", dataf.columns)
-    # Overall_df = prepare_data(dataf)
     
     if selected_user == "Overall":
-        # Use overall data; ensure total_messages is included
-        print("Using overall data for training.")
-        # dataf = Overall_df
-        if selected_user == "Overall":
-            print(dataf.head())
+        # # Use overall data; ensure total_messages is included
+        # print("Using overall data for training.")
+        # # dataf = Overall_df
+        # if selected_user == "Overall":
+        #     print(dataf.head())
 
         if 'total_messages' not in dataf.columns:
             print("Error: 'total_messages' column is missing from DataFrame.")
@@ -155,9 +143,6 @@ def train_datas(dataf, selected_user):
         if dataf.empty:
             print("No data available for the selected user.")
             return None
-    
-    # print(f"Data columns after filtering by user: {dataf.columns}")
-    # print(dataf.head())
     
     # Define features and target variable
     X = dataf[['minute', 'hour', 'day', 'day_of_week', 'is_weekend', 'message_length','daily_message_intensity', 'day_weekend_interaction', 'total_messages', 'total_daily_messages']]
@@ -173,21 +158,47 @@ def train_datas(dataf, selected_user):
     
     model = LinearRegression()
     model.fit(X_train, y_train)
-    
     y_pred = model.predict(X_test)
+
+    # print(X_test)                                                     ###### Very Important for understanding the working of the model.
+    # print("model coeff: ", model.coef_)                               ###### y = (model.coef_ * (X_test)) + model.intercept_        
+    # print("model intercept: ", model.intercept_)                      ###### model.intercept_ = 1.0302869668521453e-12  and model.coef_ = [ 9.39664541e-17  3.83026943e-15  1.81929125e-15 -3.25694333e-15 5.64760912e-16 -2.49800181e-16 -3.08086889e-15  3.57266300e-15 1.70002901e-16  1.00000000e+00]   
+    # print((model.coef_*X_test)+model.intercept_)
     r2 = r2_score(y_test, y_pred)
     mse = mean_squared_error(y_test, y_pred)
+    mae = mean_absolute_error(y_test, y_pred)
+    rmse = np.sqrt(mse)
 
-    print("R-squared:", f"{r2:.2f}")
-    print("Mean Squared Error:", f"{mse:.2f}")
+    
+    
+    print("R-squared:", f"{r2}")
+    print("Mean Squared Error:", f"{mse}")
+    print("Mean Absolute Error:", f"{mae}")
+    print("Root Mean Squared Error:", f"{rmse}")
     
     st.write(f"R-squared: {r2}")
     st.write(f"Mean Squared Error: {mse}")
+    st.write(f"Mean Absolute Error: {mae}")
+    st.write(f"Root Mean Squared Error: {rmse}")
     
-    predictions_df = pd.DataFrame({'User': dataf['user'], 'Actual': y_test, 'Predicted': f"{y_pred}"})
+    predictions_df = pd.DataFrame({'Actual': y_test, 'Predicted': y_pred})
     print(predictions_df.head())
-        
-    joblib.dump(model, 'linear_regression_model.pkl')    
+
+    st.title('Prediction Visualization')
+    # Scatter plot function``
+
+    st.write("Scatter Plot")
+    plt.figure(figsize=(8, 6))
+    sns.scatterplot(x=y_test, y=y_pred, alpha=0.7)
+    plt.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], color='red', linestyle='--')
+    plt.xlabel("Actual Values")
+    plt.ylabel("Predicted Values")
+    plt.title("Actual vs Predicted")
+    st.pyplot(plt)
+    
+    
+    joblib.dump(model, 'linear_regression_model.pkl')
+       
 
 def load_model():
     return joblib.load('linear_regression_model.pkl')
