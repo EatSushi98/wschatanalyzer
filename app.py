@@ -182,33 +182,24 @@ if uploaded_file is not None:
             fig, ax = plt.subplots()
             ax.pie(emoji_df['Count'], labels=emoji_df['Emoji'], autopct="%0.2f%%")
             st.pyplot(fig)
-
+        
+        
+        
         #FREQUENCY PREDICTER    
         # user_df = df[df['user'] == selected_user]
         new_features = prepare_data(df)
         train_datas(df, selected_user)
         print(f"Selected user: {selected_user}")
-        print("DataFrame passed to train_datas shape:", df.shape)
-        print("DataFrame passed to train_datas columns:", df.columns)
+
         
         models = load_model()
-        
-        #Later, to make predictions on new data:
-        
-        # new_features['hoursq'] = new_features['hour'] * new_features['hour']
-        # print(f"Data after preparation: {new_features.shape}")
+
         X_new = new_features[['minute', 'hour', 'day', 'day_of_week', 'is_weekend', 'message_length', 'daily_message_intensity', 'day_weekend_interaction', 'total_messages', 'total_daily_messages']]
-        print("DataFrame passed to model before prediction (Overall):", X_new.shape)
-        print(df.head())
         if X_new.shape[0] == 0:
             st.error("No data available for prediction!")
         
         predictions = models.predict(X_new)   
 
-        print("Rows after passing to model")
-        print(df.head())
-        # st.write("The DataFrame is : ")
-        # st.dataframe(df)
         predictions_df = pd.DataFrame({
         'Minute': X_new['minute'],
         'Hour': X_new['hour'],
@@ -221,7 +212,6 @@ if uploaded_file is not None:
         'Total Messages': X_new['total_messages'],
         'Total Message Intensity': X_new['total_daily_messages'] ,
         'Predictions': predictions
-        # 'Sentiment': X_new['sentiment']
         })
         predictions_df['user'] = df['user']
         
@@ -239,16 +229,15 @@ if uploaded_file is not None:
             import atexit
             atexit.register(observer.stop)
             
-            if 'df' in globals() and df is not None:
-                st.write("Main DataFrame: ")
-                st.dataframe(df)  # Display the DataFrame if it's loaded
-            else:
-                st.warning("No data to display yet. Modify the file to load updates.")
+            # if 'df' in globals() and df is not None:
+            #     st.write("Main DataFrame: ")
+            #     st.dataframe(df)  # Display the DataFrame if it's loaded
+            # else:
+            #     st.warning("No data to display yet. Modify the file to load updates.")
         
         
         # FILTERED MESSAGES
         filtered_df = helper.filter_messages_by_user(df, selected_user)
-        # st.dataframe(filtered_df[['user', 'message', 'date']])R
 
         # Sentiment Analysis for Selected User
         sentiment_counts = filtered_df['sentiment'].value_counts()
@@ -257,19 +246,3 @@ if uploaded_file is not None:
         ax.pie(sentiment_counts, labels=sentiment_counts.index, autopct='%1.1f%%', startangle=90)
         ax.axis('equal')
         st.pyplot(fig)
-
-        
-        # # Extract DateTime Features
-        # df = helper.extract_datetime_features(df)
-        # st.dataframe(df.head(50))
-
-        # Date Filters
-        # year_filter = st.sidebar.selectbox('Select Year', df['year'].dropna().unique())
-        # month_filter = st.sidebar.selectbox('Select Month', df['month'].dropna().unique())
-        # date_filter = st.sidebar.selectbox('Select Date', df['date'].dropna().unique())
- 
-        # filtereddate_df = df[(df['year'] == year_filter) & (df['month'] == month_filter) & (df['date'] == date_filter)]
-        # st.dataframe(filtereddate_df)  # Uncomment after testing
-
-# if "df" not in st.session_state:
-#     st.session_state.df = df        # Access st.session_state.df to use the processed data
