@@ -5,14 +5,10 @@ from collections import Counter
 import emoji
 import datetime
 import matplotlib.pyplot as plt
-# from matplotlib import font_manager
-# font_path = r"C:\Users\karsu\Downloads\Noto_Emoji\NotoEmoji-VariableFont_wght.ttf"
-# font_prop = font_manager.FontProperties(fname=font_path)
-# plt.rcParams['font.family'] = font_prop.get_name()
+import seaborn as sns
+from preprocessor import train_datas
 
 extract = URLExtract()
-
-
 
 def fetch_stats(selected_user,df):
 
